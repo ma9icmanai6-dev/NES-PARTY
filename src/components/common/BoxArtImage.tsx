@@ -40,6 +40,7 @@ export const BoxArtImage: React.FC<BoxArtImageProps> = ({
           src={currentSrc}
           alt={`${rom.title} Box Art`}
           onError={handleImageError}
+          referrerPolicy="no-referrer"
           loading="lazy"
           className={`w-full h-full object-cover object-top transition-transform duration-300 ${imgClassName}`}
         />

@@ -21,6 +21,8 @@ import {
   ChevronDown,
   Volume2,
   VolumeX,
+  Smartphone,
+  Film,
 } from "lucide-react";
 import { ArcadeDetailsOverlay } from "./ArcadeDetailsOverlay";
 import { NesAudioContext } from "../../services/audio";
@@ -61,6 +63,12 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
   const [favorites, setFavorites] = useState<Set<string>>(new Set(["16TWwozu3F4uobWhFoLk0NQad2PR7nNkt"]));
   const [wheelPulse, setWheelPulse] = useState<boolean>(true);
 
+  // Video snap playback state (Google Drive authentic video snaps)
+  const [isVideoMuted, setIsVideoMuted] = useState<boolean>(true);
+  const [videoError, setVideoError] = useState<boolean>(false);
+  const [videoLoaded, setVideoLoaded] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const wheelContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef<boolean>(false);
   const dragStartYRef = useRef<number>(0);
@@ -100,10 +108,38 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
 
   // Ensure an active selected game
   const activeGame = selectedRom || filteredRoms[0] || roms[0];
+
+  // Reset video player state when selected game changes
+  useEffect(() => {
+    setVideoError(false);
+    setVideoLoaded(false);
+  }, [activeGame?.id]);
+
   const activeIndex = useMemo(() => {
     const idx = filteredRoms.findIndex((r) => r.id === activeGame?.id);
     return idx >= 0 ? idx : 0;
   }, [filteredRoms, activeGame]);
+
+  // Jump to games beginning with specific letter
+  const jumpToLetter = (char: string) => {
+    const target = char.toUpperCase();
+    const idx = filteredRoms.findIndex((r) => {
+      const first = (r.title || "").trim()[0]?.toUpperCase() || "";
+      if (target === "#") {
+        return !/[A-Z]/.test(first);
+      }
+      return first === target;
+    });
+    if (idx >= 0) {
+      onSelectRom(filteredRoms[idx]);
+      playTick();
+    }
+  };
+
+  const currentLetter = useMemo(() => {
+    const first = (activeGame?.title || "").trim()[0]?.toUpperCase() || "";
+    return /[A-Z]/.test(first) ? first : "#";
+  }, [activeGame?.title]);
 
   // Navigate wheel up/down
   const moveWheel = (step: number) => {
@@ -166,6 +202,12 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
           setShowDetailsOverlay(false);
           audioEngine?.playBackSound();
         }
+      } else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1 && !["w", "s", "i", "f", " "].includes(e.key.toLowerCase())) {
+        if (/^[a-zA-Z]$/.test(e.key)) {
+          jumpToLetter(e.key.toUpperCase());
+        } else if (/^[0-9]$/.test(e.key)) {
+          jumpToLetter("#");
+        }
       }
     };
 
@@ -195,20 +237,19 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
       const normOffset = offset;
       const isSelected = offset === 0;
 
-      // Arc curvature: items at the top and bottom push slightly toward the right edge
-      // In Wheel.cs: offset.x = radius * cos(angleRad), offset.y = radius * sin(angleRad)
-      const angleRad = (normOffset / span) * 0.38; // ~22 degree spread
-      // xOffset curves along arc, selected item reaches furthest toward center/preview GUI
-      const xOffset = Math.sin(Math.abs(angleRad)) * 75;
-      const rotation = normOffset * 3.2; // subtle elegant degrees tilt
-      const scale = isSelected ? 1.06 : Math.max(0.78, 1.0 - Math.abs(normOffset) * 0.055);
+      // Arc curvature: center item (selected) protrudes furthest toward left (toward GUI)
+      // Top and bottom items curve back to the right
+      const angleRad = (normOffset / span) * 0.42; // arc spread
+      const archProtrusion = (Math.cos(angleRad) - Math.cos(0.42)) * 78;
+      const rotation = normOffset * 2.2; // subtle elegant degrees tilt
+      const scale = isSelected ? 1.09 : Math.max(0.81, 1.03 - Math.abs(normOffset) * 0.05);
       const opacity = isSelected ? 1.0 : Math.max(0.42, 1.0 - Math.abs(normOffset) * 0.14);
 
       items.push({
         rom,
         offset,
         isSelected,
-        xOffset,
+        xOffset: archProtrusion,
         rotation,
         scale,
         opacity,
@@ -313,16 +354,18 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
             )}
           </div>
 
-          {/* Mobile Controller Room Code */}
+          {/* Prominent Connect Phone Controller Button */}
           {onOpenQrModal && (
             <button
               onClick={onOpenQrModal}
-              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-850 border border-red-500/80 rounded-lg text-xs font-mono font-bold text-zinc-200 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Pair Smartphone Controller"
+              className="flex items-center gap-2 px-3 sm:px-3.5 py-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs font-grotesk font-black uppercase tracking-wider shadow-lg shadow-red-950/60 border border-red-400/60 active:scale-95 transition-all cursor-pointer ring-2 ring-red-500/20"
+              title="Connect Phone as Wireless NES Controller"
             >
-              <QrCode className="w-3.5 h-3.5 text-red-400" />
-              <span className="hidden sm:inline text-[10px] text-zinc-400">JOIN:</span>
-              <span className="font-black text-amber-400">{roomId}</span>
+              <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white animate-pulse" />
+              <span className="font-extrabold tracking-wide">CONNECT PHONE</span>
+              <span className="hidden sm:inline-block px-1.5 py-0.5 bg-black/40 rounded text-[10px] font-mono text-amber-300 border border-amber-400/40 font-black">
+                {roomId}
+              </span>
             </button>
           )}
 
@@ -362,11 +405,11 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
       </header>
 
       {/* Main Arcade Stage: Left Side Stage & Right Side Curved Wheel */}
-      <main className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 p-3 sm:p-5 md:p-6 overflow-hidden items-center">
-        {/* Left Side: Game Theme Stage / CRT Preview Showcase */}
-        <section className="lg:col-span-5 xl:col-span-5 flex flex-col justify-between h-full max-h-[780px] p-4 sm:p-5 md:p-6 rounded-3xl bg-zinc-950/70 border border-zinc-800/80 backdrop-blur-md shadow-2xl relative overflow-hidden">
-          {/* Top Stage Badges */}
-          <div className="flex items-center justify-between gap-3">
+      <main className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 xl:gap-5 p-2.5 sm:p-4 md:p-5 overflow-hidden items-stretch">
+        {/* Left Side: Game Theme Stage / CRT Preview Showcase - Enlarged to the right filling empty space */}
+        <section className="lg:col-span-7 xl:col-span-7 2xl:col-span-7 flex flex-col justify-between h-full p-4 sm:p-5 md:p-6 rounded-3xl bg-zinc-950/75 border border-zinc-800/80 backdrop-blur-md shadow-2xl relative overflow-hidden">
+          {/* Top Stage Badges & Arcade System Specs */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-zinc-900 border border-zinc-700/80 rounded-lg text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -375,9 +418,12 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
               <span className="px-3 py-1 bg-zinc-900 border border-zinc-700/80 rounded-lg text-xs font-mono font-semibold text-zinc-300 uppercase tracking-wider">
                 {activeGame?.genre || "Action Arcade"}
               </span>
+              <span className="hidden sm:inline-flex px-2.5 py-1 bg-emerald-950/60 border border-emerald-500/40 rounded-lg text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">
+                60 FPS CYCLE-ACCURATE
+              </span>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+            <div className="flex items-center gap-2.5 text-xs font-mono text-zinc-400">
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-sky-400" />
                 <span>{activeGame?.year || "1988"}</span>
@@ -387,64 +433,141 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
                 <Users className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{activeGame?.players === 2 ? "2 PLAYERS" : "1 PLAYER"}</span>
               </span>
+              <span className="hidden md:inline-flex items-center gap-1 text-amber-400/90">
+                <span>•</span>
+                <span>NTSC 2A03 STEREO</span>
+              </span>
             </div>
           </div>
 
-          {/* Central Showcase: Duo Presentation (Authentic Box Art + Animated CRT Preview Screen) */}
+          {/* Central Showcase: Duo Presentation (Authentic Box Art + Expanded Animated CRT Preview Screen) */}
           <div className="my-auto py-2 flex flex-col items-center w-full">
-            <div className="w-full flex items-center justify-center gap-3 sm:gap-4">
+            <div className="w-full flex items-center justify-center gap-4 sm:gap-6 lg:gap-8">
               {/* Authentic Google Drive Box Cover */}
               <div className="shrink-0 relative group/cover">
                 <BoxArtImage
                   rom={activeGame}
-                  className="w-24 sm:w-28 md:w-32 aspect-[3/4] rounded-2xl border-2 border-zinc-700/90 shadow-2xl overflow-hidden hover:scale-105 transition-transform"
+                  className="w-28 sm:w-36 md:w-44 lg:w-48 aspect-[3/4] rounded-2xl border-2 border-zinc-750 shadow-2xl overflow-hidden hover:scale-105 transition-transform"
                 />
-                <div className="absolute -bottom-2 inset-x-0 mx-auto w-max px-2 py-0.5 rounded-full bg-black/90 border border-amber-500/40 text-[9px] font-mono font-black text-amber-400 uppercase tracking-widest text-center shadow-lg">
+                <div className="absolute -bottom-2.5 inset-x-0 mx-auto w-max px-2.5 py-0.5 rounded-full bg-black/95 border border-amber-500/50 text-[9px] font-mono font-black text-amber-400 uppercase tracking-widest text-center shadow-xl">
                   BOX ART
                 </div>
               </div>
 
-              {/* Animated CRT Preview Screen with Arcade Bezel */}
+              {/* Animated CRT Preview Screen with Arcade Bezel - Plays Authentic Google Drive Video Snaps */}
               <div
-                className="relative flex-1 max-w-xs sm:max-w-sm aspect-[4/3] rounded-2xl overflow-hidden border-4 border-zinc-800 shadow-2xl flex items-center justify-center group"
+                className="relative flex-1 w-full max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-3xl aspect-[16/10] sm:aspect-[4/3] rounded-2xl overflow-hidden border-4 border-zinc-800 shadow-2xl flex items-center justify-center group bg-black"
                 style={{
-                  background: `linear-gradient(135deg, ${activeGame?.secondaryColor || "#1e1b4b"}, #09090b)`,
                   boxShadow: `0 0 45px -10px ${activeGame?.primaryColor || "#ef4444"}50`,
                 }}
               >
+                {/* Authentic Video Snap from Google Drive */}
+                {(activeGame?.videoUrl || activeGame?.videoDirectUrl) && !videoError ? (
+                  <video
+                    ref={videoRef}
+                    key={activeGame.videoId || activeGame.id}
+                    src={activeGame.videoUrl || activeGame.videoDirectUrl}
+                    autoPlay
+                    loop
+                    muted={isVideoMuted}
+                    playsInline
+                    onLoadedData={() => setVideoLoaded(true)}
+                    onError={() => setVideoError(true)}
+                    className={`absolute inset-0 w-full h-full object-contain bg-black z-0 transition-opacity duration-500 ${
+                      videoLoaded ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
+                ) : null}
+
+                {/* Video Snap Overlay Indicators: Live Snap badge & Mute/Unmute toggle */}
+                {(activeGame?.videoUrl || activeGame?.videoDirectUrl) && !videoError && (
+                  <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-auto">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-sm border border-red-500/50 text-[10px] font-mono font-black text-red-400 tracking-wider shadow-md">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />
+                      <span>LIVE VIDEO SNAP</span>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsVideoMuted((prev) => !prev);
+                      }}
+                      className="p-1.5 rounded-lg bg-black/80 hover:bg-black/95 backdrop-blur-sm border border-zinc-700 text-zinc-300 hover:text-white transition-all shadow-md cursor-pointer"
+                      title={isVideoMuted ? "Unmute Video Clip" : "Mute Video Clip"}
+                    >
+                      {isVideoMuted ? (
+                        <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
+                      ) : (
+                        <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Authentic Action Snap Screenshot (Displays for all games when video is not playing) */}
+                {activeGame?.snapUrl && (
+                  <img
+                    src={activeGame.snapUrl}
+                    alt={`${activeGame.title} Snap Screenshot`}
+                    referrerPolicy="no-referrer"
+                    className={`absolute inset-0 w-full h-full object-contain bg-black z-0 transition-opacity duration-500 ${
+                      videoLoaded && !videoError ? "opacity-0 pointer-events-none" : "opacity-100"
+                    }`}
+                  />
+                )}
+
+                {/* Badge when displaying In-Game Action Snap */}
+                {activeGame?.snapUrl && (!activeGame?.videoUrl && !activeGame?.videoDirectUrl) && (
+                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-sm border border-emerald-500/50 text-[10px] font-mono font-black text-emerald-400 tracking-wider shadow-md">
+                    <Film className="w-3 h-3 text-emerald-400" />
+                    <span>ARCADE SNAP</span>
+                  </div>
+                )}
+
                 {/* Retro scanlines overlay on preview screen */}
                 <div
-                  className="absolute inset-0 pointer-events-none opacity-40 z-10"
+                  className="absolute inset-0 pointer-events-none opacity-35 z-10"
                   style={{
                     backgroundImage:
                       "repeating-linear-gradient(0deg, rgba(0,0,0,0.6), rgba(0,0,0,0.6) 2px, transparent 2px, transparent 4px)",
                   }}
                 />
 
-                {/* Animated Arcade Backdrop Elements */}
-                <div className="relative z-0 text-center p-4 flex flex-col items-center">
+                {/* Animated Arcade Backdrop Elements (Active when neither video nor snap exists) */}
+                {!activeGame?.snapUrl && (
                   <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center mb-2 shadow-lg border border-white/20"
-                    style={{ backgroundColor: activeGame?.primaryColor || "#ef4444" }}
+                    className={`relative z-0 text-center p-4 sm:p-6 flex flex-col items-center max-w-md transition-opacity duration-300 ${
+                      (activeGame?.videoUrl || activeGame?.videoDirectUrl) && videoLoaded && !videoError
+                        ? "opacity-0 pointer-events-none"
+                        : "opacity-100"
+                    }`}
+                    style={{
+                      background: `linear-gradient(135deg, ${activeGame?.secondaryColor || "#1e1b4b"}, #09090b)`,
+                    }}
                   >
-                    <Gamepad2 className="w-7 h-7 text-white animate-pulse" />
+                    <div
+                      className="w-12 sm:w-14 h-12 sm:h-14 rounded-2xl flex items-center justify-center mb-3 shadow-lg border border-white/20"
+                      style={{ backgroundColor: activeGame?.primaryColor || "#ef4444" }}
+                    >
+                      <Gamepad2 className="w-7 sm:w-8 h-7 sm:h-8 text-white animate-pulse" />
+                    </div>
+                    <h3 className="font-display font-black text-lg sm:text-xl md:text-2xl text-white uppercase tracking-tight drop-shadow-md line-clamp-1">
+                      {activeGame?.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm font-mono text-zinc-300/90 mt-1.5 line-clamp-2 leading-relaxed">
+                      {activeGame?.description || "Authentic 60 FPS NES reproduction running on ArcadeFrontend engine."}
+                    </p>
                   </div>
-                  <h3 className="font-display font-black text-base sm:text-lg text-white uppercase tracking-tight drop-shadow-md line-clamp-1">
-                    {activeGame?.title}
-                  </h3>
-                  <p className="text-[11px] font-mono text-zinc-400 mt-1 line-clamp-2">
-                    {activeGame?.description || "Authentic 60 FPS NES reproduction running on ArcadeFrontend engine."}
-                  </p>
-                </div>
+                )}
 
                 {/* Hover Launch Trigger Overlay */}
                 <button
                   onClick={() => onLaunchRom(activeGame)}
-                  className="absolute inset-0 z-20 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer backdrop-blur-[2px]"
+                  className="absolute inset-0 z-30 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer backdrop-blur-[2px]"
                 >
-                  <div className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-display font-black text-xs uppercase tracking-wider rounded-2xl shadow-2xl border border-emerald-400/50 scale-95 group-hover:scale-100 transition-transform">
+                  <div className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-display font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-2xl border border-emerald-400/50 scale-95 group-hover:scale-100 transition-transform">
                     <Play className="w-4 h-4 fill-white" />
-                    <span>START EMULATOR</span>
+                    <span>START EMULATOR [ENTER]</span>
                   </div>
                 </button>
               </div>
@@ -454,10 +577,22 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
           {/* Bottom Stage Controls & Details */}
           <div className="space-y-3 pt-2">
             <div>
-              <h2 className="font-display font-black text-xl sm:text-2xl md:text-3xl text-white uppercase tracking-tight drop-shadow-md truncate">
-                {activeGame?.title}
-              </h2>
-              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 className="font-display font-black text-xl sm:text-2xl md:text-3xl lg:text-4xl text-white uppercase tracking-tight drop-shadow-md truncate">
+                  {activeGame?.title}
+                </h2>
+                {activeGame?.publisher && (
+                  <span className="hidden sm:inline-block text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                    {activeGame.publisher}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs sm:text-sm text-zinc-300 font-sans line-clamp-2 mt-1 leading-relaxed max-w-3xl">
+                {activeGame?.description || "Authentic 60 FPS NES reproduction running on cycle-accurate engine with stereo 2A03 sound."}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
                 {activeGame?.tags?.map((t, idx) => (
                   <span
                     key={idx}
@@ -475,7 +610,7 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
                 id="arcade-play-btn"
                 onClick={() => onLaunchRom(activeGame)}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white font-display font-black text-xs sm:text-sm tracking-wider uppercase rounded-2xl shadow-xl shadow-emerald-950/60 border border-emerald-400/40 active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white font-display font-black text-xs sm:text-sm tracking-wider uppercase rounded-2xl shadow-xl shadow-emerald-950/60 border border-emerald-400/40 active:scale-95 transition-all cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-white" />
                 <span>{isLoading ? "LOADING..." : "PLAY NOW [ENTER]"}</span>
@@ -487,7 +622,7 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
                   setShowDetailsOverlay(true);
                   playSelect();
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 hover:text-white rounded-2xl text-xs font-grotesk font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-md"
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 hover:text-white rounded-2xl text-xs font-grotesk font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-md"
               >
                 <Info className="w-3.5 h-3.5 text-sky-400" />
                 <span>DETAILS [I]</span>
@@ -520,13 +655,13 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
           </div>
         </section>
 
-        {/* Right Side: The Expanded HyperSpin Curved Radial Wheel */}
+        {/* Right Side: The HyperSpin Curved Radial Wheel (Shifted Left & Enlarged to Fill Empty Space) */}
         <section
           ref={wheelContainerRef}
-          className="lg:col-span-7 xl:col-span-7 h-full max-h-[780px] flex flex-col justify-center relative overflow-visible select-none"
+          className="lg:col-span-5 xl:col-span-5 2xl:col-span-5 h-full flex flex-col justify-center relative overflow-visible select-none lg:-ml-8 xl:-ml-14 2xl:-ml-20"
         >
           {/* Wheel Control Arrows (Top / Bottom) */}
-          <div className="absolute top-2 right-4 sm:right-8 z-30 flex gap-1">
+          <div className="absolute top-2 right-2 sm:right-4 md:right-6 z-30 flex gap-1.5">
             <button
               onClick={() => moveWheel(-1)}
               className="p-2 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-300 hover:text-white transition-all cursor-pointer shadow-lg active:scale-90"
@@ -543,8 +678,29 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
             </button>
           </div>
 
-          {/* Curved Wheel Items Container - Extended Almost to Edge of Left GUI */}
-          <div className="relative w-full h-[660px] flex flex-col justify-center items-end pr-1 sm:pr-4">
+          {/* Vertical Alphabet Quick-Jump Index Strip for all 948 titles */}
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 z-40 hidden 2xl:flex flex-col items-center py-1.5 px-0.5 bg-zinc-950/90 backdrop-blur-md rounded-full border border-zinc-800 shadow-2xl">
+            {["#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"].map((letter) => {
+              const isCurrent = currentLetter === letter;
+              return (
+                <button
+                  key={letter}
+                  onClick={() => jumpToLetter(letter)}
+                  className={`w-4 h-4 rounded-full text-[8.5px] font-mono font-black flex items-center justify-center transition-all cursor-pointer ${
+                    isCurrent
+                      ? "bg-amber-400 text-black shadow-md scale-110 font-black"
+                      : "text-zinc-500 hover:text-white hover:bg-zinc-800"
+                  }`}
+                  title={`Jump to '${letter}' titles`}
+                >
+                  {letter}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Curved Wheel Items Container - Shifted leftward and enlarged to meet the Main GUI */}
+          <div className="relative w-full h-full min-h-[580px] flex flex-col justify-center items-end pr-2 sm:pr-3 md:pr-4 lg:pr-5">
             {visibleWheelItems.map((item) => {
               const { rom, offset, isSelected, xOffset, rotation, scale, opacity } = item;
 
@@ -563,28 +719,28 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
                     isSelected ? "z-30" : "z-10"
                   }`}
                   style={{
-                    transform: `translateY(${offset * 82}px) translateX(${-xOffset}px) rotate(${rotation}deg) scale(${scale})`,
+                    transform: `translateY(${offset * 90}px) translateX(${-(xOffset + 55)}px) rotate(${rotation}deg) scale(${scale})`,
                     opacity: opacity,
                   }}
                 >
-                  {/* Wheel Item Card: Sized Wide Almost to Edge of Other GUI, with Box Cover and Large Readable Title */}
+                  {/* Wheel Item Card: Enlarged to fill space and reach left towards Main GUI */}
                   <div
-                    className={`relative w-full max-w-[340px] sm:max-w-[440px] md:max-w-[520px] lg:max-w-[580px] xl:max-w-[660px] 2xl:max-w-[720px] h-20 sm:h-22 md:h-24 px-3 sm:px-4 py-2 rounded-2xl flex items-center justify-between border-2 transition-all shadow-2xl backdrop-blur-md ${
+                    className={`relative w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[530px] xl:max-w-[590px] 2xl:max-w-[650px] h-22 sm:h-24 md:h-26 px-3.5 sm:px-4.5 py-2 rounded-2xl flex items-center justify-between border-2 transition-all shadow-2xl backdrop-blur-md ${
                       isSelected
-                        ? "bg-gradient-to-r from-zinc-900 via-zinc-900/98 to-zinc-950 border-amber-400 text-white shadow-amber-500/40 scale-105"
+                        ? "bg-gradient-to-r from-zinc-900 via-zinc-900/98 to-zinc-950 border-amber-400 text-white shadow-amber-500/40"
                         : "bg-zinc-950/85 hover:bg-zinc-900/90 border-zinc-800/90 hover:border-zinc-600 text-zinc-300"
                     }`}
                     style={{
                       borderColor: isSelected ? "#f59e0b" : undefined,
                       boxShadow: isSelected
-                        ? `0 0 30px -4px ${rom.primaryColor || "#f59e0b"}90`
+                        ? `0 0 32px -4px ${rom.primaryColor || "#f59e0b"}95`
                         : undefined,
                     }}
                   >
                     {/* Left: Authentic Box Cover Thumbnail */}
                     <BoxArtImage
                       rom={rom}
-                      className="w-13 sm:w-14 md:w-16 h-16 sm:h-18 md:h-20 rounded-xl shadow-lg border border-zinc-700/80 shrink-0"
+                      className="w-14 sm:w-16 md:w-17 h-16 sm:h-18 md:h-20 rounded-xl shadow-lg border border-zinc-700/80 shrink-0"
                     />
 
                     {/* Middle: Prominent, High-Contrast Readable Game Title & Metadata */}
@@ -600,6 +756,12 @@ export const ArcadeFrontendMenu: React.FC<ArcadeFrontendMenuProps> = ({
                         <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-750 font-semibold text-zinc-300 truncate max-w-[140px] sm:max-w-[180px]">
                           {rom.genre || "Action Arcade"}
                         </span>
+                        {(rom.videoId || rom.videoUrl) && (
+                          <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/70 border border-red-500/40 text-[9px] font-mono font-black text-red-300">
+                            <Film className="w-2.5 h-2.5 text-red-400" />
+                            SNAP
+                          </span>
+                        )}
                         <span className="hidden md:inline-block px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-750 text-zinc-400 font-bold">
                           {rom.players === 2 ? "2 PLAYERS" : "1 PLAYER"}
                         </span>

@@ -202,22 +202,39 @@ export default function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.roms && data.roms.length > 0) {
-          // Merge with catalog to preserve rich colors/genres where available
+          // Merge with master catalog to preserve rich box art, video snaps, and metadata
           const merged: RomItem[] = data.roms.map((d: any) => {
             const curated = ALL_DRIVE_ROMS.find(
               (c) => c.id === d.id || c.title.toLowerCase() === d.title.toLowerCase()
             );
             return {
+              ...curated,
               ...d,
-              genre: curated?.genre || d.genre || "NES Classic",
-              year: curated?.year || d.year || "1988",
-              players: curated?.players || 2,
-              description: curated?.description || `Authentic ROM from Google Drive: ${d.rawName}`,
-              primaryColor: curated?.primaryColor || "#dc2626",
-              secondaryColor: curated?.secondaryColor || "#1e1b4b",
-              accentColor: curated?.accentColor || "#f59e0b",
+              boxArtUrl: d.boxArtUrl || curated?.boxArtUrl,
+              boxArtThumbnail: d.boxArtThumbnail || curated?.boxArtThumbnail,
+              boxArtFileName: d.boxArtFileName || curated?.boxArtFileName,
+              videoId: d.videoId || curated?.videoId,
+              videoUrl: d.videoUrl || curated?.videoUrl,
+              videoDirectUrl: d.videoDirectUrl || curated?.videoDirectUrl,
+              videoThumbnail: d.videoThumbnail || curated?.videoThumbnail,
+              videoFileName: d.videoFileName || curated?.videoFileName,
+              genre: d.genre || curated?.genre || "NES Classic",
+              year: d.year || curated?.year || "1988",
+              players: d.players || curated?.players || 2,
+              description: d.description || curated?.description || `Authentic ROM from Google Drive: ${d.rawName}`,
+              primaryColor: d.primaryColor || curated?.primaryColor || "#dc2626",
+              secondaryColor: d.secondaryColor || curated?.secondaryColor || "#1e1b4b",
+              accentColor: d.accentColor || curated?.accentColor || "#f59e0b",
             };
           });
+
+          // Ensure ALL games from ALL_DRIVE_ROMS are present so no game is missed
+          const existingIds = new Set(merged.map((m) => m.id));
+          for (const c of ALL_DRIVE_ROMS) {
+            if (!existingIds.has(c.id)) {
+              merged.push(c);
+            }
+          }
 
           setRoms(merged);
           if (merged.length > 0 && !selectedRom) {
@@ -370,10 +387,10 @@ export default function App() {
   }
 
   return (
-    <div className="w-screen h-screen bg-[#050408] text-zinc-100 flex items-center justify-center p-2 sm:p-3 md:p-4 overflow-hidden select-none font-sans">
+    <div className="w-screen h-screen bg-[#050408] text-zinc-100 flex flex-col p-0 m-0 overflow-hidden select-none font-sans">
       {appMode === "split-test" ? (
         /* Dual Split View: TV on Left, Phone Controller Simulator on Right */
-        <div className="w-full h-full max-w-[1700px] max-h-[98vh] grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="w-full h-full p-2 sm:p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 overflow-hidden">
           <div className="lg:col-span-8 rounded-2xl border border-zinc-800 bg-[#0d0714] shadow-2xl flex flex-col overflow-hidden relative">
             {activeRom && engineRef.current ? (
               <EmulatorView
@@ -383,6 +400,7 @@ export default function App() {
                 p2Status={p2Status}
                 onExitToMenu={exitToMenu}
                 fps={fps}
+                onOpenQrModal={() => setShowQrModal(true)}
               />
             ) : (
               renderCurrentMenuLayout()
@@ -415,8 +433,8 @@ export default function App() {
           </div>
         </div>
       ) : (
-        /* Full-Screen Edge-to-Edge Borderless Display matching screenshot */
-        <div className="w-full h-full max-w-[1600px] max-h-[98vh] rounded-2xl border border-zinc-800/80 bg-[#0d0714] shadow-2xl flex flex-col overflow-hidden relative">
+        /* Full-Screen Edge-to-Edge Display Filling 100% of Screen Space */
+        <div className="w-full h-full bg-[#0d0714] flex flex-col overflow-hidden relative">
           {activeRom && engineRef.current ? (
             <EmulatorView
               engine={engineRef.current}
@@ -425,6 +443,7 @@ export default function App() {
               p2Status={p2Status}
               onExitToMenu={exitToMenu}
               fps={fps}
+              onOpenQrModal={() => setShowQrModal(true)}
             />
           ) : (
             renderCurrentMenuLayout()
@@ -445,7 +464,7 @@ export default function App() {
         />
       )}
 
-      {/* QR Code Join Modal */}
+      {/* QR Code & Text Code Connect Phone Modal */}
       {showQrModal && (
         <QrCodeModal
           roomId={roomId}
@@ -454,6 +473,11 @@ export default function App() {
           onClose={() => setShowQrModal(false)}
           onOpenSplitTest={() => {
             setAppMode("split-test");
+            setShowQrModal(false);
+          }}
+          onJoinCustomRoom={(targetCode) => {
+            setRoomId(targetCode);
+            setAppMode("controller");
             setShowQrModal(false);
           }}
         />

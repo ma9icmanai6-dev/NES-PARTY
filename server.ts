@@ -102,8 +102,8 @@ app.get("/api/drive-roms", async (req, res) => {
   if (
     folderId === "1nXMaslAUGucUn8VMp89w-osvlDTt877-" &&
     cachedDriveRoms &&
-    cachedDriveRoms.length >= 100 &&
-    Date.now() - lastCacheTime < CACHE_TTL_MS
+    cachedDriveRoms.length > 0 &&
+    req.query.forceFresh !== "true"
   ) {
     return res.json({
       folderId,
@@ -347,6 +347,68 @@ app.get("/api/proxy-art", async (req, res) => {
     res.status(404).json({ error: "Box art not found" });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to proxy box art", details: err.message });
+  }
+});
+
+// API: Proxy and Stream Google Drive Video Snaps with Range Request support
+app.get("/api/proxy-video", async (req, res) => {
+  const id = req.query.id as string;
+  if (!id) {
+    return res.status(400).json({ error: "Missing 'id' parameter" });
+  }
+
+  try {
+    const directUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&authuser=0`;
+    const range = req.headers.range;
+    const fetchHeaders: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    };
+    if (range) {
+      fetchHeaders["Range"] = range;
+    }
+
+    let videoRes = await fetch(directUrl, { headers: fetchHeaders });
+    if (!videoRes.ok) {
+      const fallbackUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
+      videoRes = await fetch(fallbackUrl, { headers: fetchHeaders });
+    }
+
+    if (!videoRes.ok) {
+      // If direct fetch fails, redirect directly to Google Drive content delivery URL
+      return res.redirect(directUrl);
+    }
+
+    res.status(videoRes.status);
+    const contentType = videoRes.headers.get("content-type") || "video/mp4";
+    const contentLength = videoRes.headers.get("content-length");
+    const contentRange = videoRes.headers.get("content-range");
+    const acceptRanges = videoRes.headers.get("accept-ranges") || "bytes";
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Accept-Ranges", acceptRanges);
+    res.setHeader("Cache-Control", "public, max-age=604800");
+    if (contentLength) res.setHeader("Content-Length", contentLength);
+    if (contentRange) res.setHeader("Content-Range", contentRange);
+
+    const buf = await videoRes.arrayBuffer();
+    return res.send(Buffer.from(buf));
+  } catch (err: any) {
+    console.error(`Error streaming video snap ${id}:`, err);
+    res.status(500).json({ error: "Failed to stream video clip", details: err.message });
+  }
+});
+
+// API: Fetch video snaps catalog from Google Drive
+app.get("/api/drive-videos", (req, res) => {
+  try {
+    const vPath = path.join(process.cwd(), "src", "data", "rawVideos.json");
+    if (fs.existsSync(vPath)) {
+      const vList = JSON.parse(fs.readFileSync(vPath, "utf-8"));
+      return res.json({ count: vList.length, videos: vList });
+    }
+    return res.json({ count: 0, videos: [] });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

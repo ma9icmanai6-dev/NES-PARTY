@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NesEngine, NES_WIDTH, NES_HEIGHT } from "../../services/emulator";
 import { RomItem, PlayerStatus, NesButton } from "../../types";
-import { Play, Pause, RotateCcw, ArrowLeft, Volume2, VolumeX, Sparkles, Gamepad2 } from "lucide-react";
+import { Play, Pause, RotateCcw, ArrowLeft, Volume2, VolumeX, Sparkles, Gamepad2, Smartphone } from "lucide-react";
 
 interface EmulatorViewProps {
   engine: NesEngine;
@@ -10,6 +10,7 @@ interface EmulatorViewProps {
   p2Status: PlayerStatus;
   onExitToMenu: () => void;
   fps: number;
+  onOpenQrModal?: () => void;
 }
 
 export const EmulatorView: React.FC<EmulatorViewProps> = ({
@@ -19,6 +20,7 @@ export const EmulatorView: React.FC<EmulatorViewProps> = ({
   p2Status,
   onExitToMenu,
   fps,
+  onOpenQrModal,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -104,6 +106,18 @@ export const EmulatorView: React.FC<EmulatorViewProps> = ({
               </span>
             )}
           </div>
+
+          {/* Quick Connect Phone Button */}
+          {onOpenQrModal && (
+            <button
+              onClick={onOpenQrModal}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-full font-press-start text-[8px] border border-red-400 shadow-md cursor-pointer transition-all active:scale-95"
+              title="Connect Phone Controller"
+            >
+              <Smartphone className="w-3 h-3" />
+              <span>CONNECT PHONE</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -126,6 +140,16 @@ export const EmulatorView: React.FC<EmulatorViewProps> = ({
                 <Play className="w-4 h-4 fill-white" />
                 <span>RESUME GAME</span>
               </button>
+
+              {onOpenQrModal && (
+                <button
+                  onClick={onOpenQrModal}
+                  className="w-full py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-press-start text-[10px] rounded-lg flex items-center justify-center gap-2 border border-red-400/50"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>CONNECT PHONE CONTROLLER</span>
+                </button>
+              )}
 
               <button
                 onClick={handleReset}
