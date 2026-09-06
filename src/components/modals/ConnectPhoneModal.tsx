@@ -13,6 +13,10 @@ import {
   ShieldCheck,
   Gamepad2,
   Share2,
+  AlertTriangle,
+  Globe,
+  ShieldAlert,
+  Info,
 } from "lucide-react";
 import { PlayerStatus } from "../../types";
 
@@ -39,15 +43,28 @@ export const ConnectPhoneModal: React.FC<ConnectPhoneModalProps> = ({
   const [codeCopied, setCodeCopied] = useState(false);
   const [inputRoomCode, setInputRoomCode] = useState("");
 
+  // Determine current origin and whether we are on Google AI Studio's private dev sandbox
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const isAisDev = currentOrigin.includes("ais-dev-");
+  const suggestedSharedOrigin = currentOrigin.replace("ais-dev-", "ais-pre-");
+
+  // Default to public shared domain if on ais-dev so phones don't hit Google 403
+  const [useSharedDomain, setUseSharedDomain] = useState<boolean>(isAisDev);
+  const [customOrigin, setCustomOrigin] = useState<string>("");
+
+  const activeOrigin = customOrigin.trim()
+    ? customOrigin.trim().replace(/\/$/, "")
+    : useSharedDomain && isAisDev
+    ? suggestedSharedOrigin
+    : currentOrigin;
+
   // Full controller URL for this room
-  const controllerUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/?room=${encodeURIComponent(roomId)}&mode=controller`
+  const controllerUrl = activeOrigin
+    ? `${activeOrigin}/?room=${encodeURIComponent(roomId)}&mode=controller`
     : `/?room=${encodeURIComponent(roomId)}&mode=controller`;
 
   // Base website URL for typing manually
-  const baseSiteUrl = typeof window !== "undefined"
-    ? window.location.origin
-    : "";
+  const baseSiteUrl = activeOrigin;
 
   useEffect(() => {
     QRCode.toDataURL(controllerUrl, {
@@ -124,8 +141,92 @@ export const ConnectPhoneModal: React.FC<ConnectPhoneModalProps> = ({
           </button>
         </div>
 
+        {/* Domain / Connection Mode Selector (Solves Google 403 / "You don't have access" error) */}
+        {isAisDev && (
+          <div className="mt-3.5 p-3.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 space-y-2.5">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="text-zinc-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-amber-400" />
+                PHONE CONNECTION TARGET:
+              </span>
+              <span className={`font-bold text-[10px] px-2 py-0.5 rounded-full uppercase ${
+                useSharedDomain && !customOrigin
+                  ? "bg-emerald-950 text-emerald-400 border border-emerald-500/40"
+                  : "bg-amber-950 text-amber-400 border border-amber-500/40"
+              }`}>
+                {useSharedDomain && !customOrigin ? "PUBLIC (RECOMMENDED FOR PHONES)" : "DEV SANDBOX"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setUseSharedDomain(true);
+                  setCustomOrigin("");
+                }}
+                className={`py-2 px-3 rounded-xl text-[11px] font-grotesk font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center text-center cursor-pointer border ${
+                  useSharedDomain && !customOrigin
+                    ? "bg-emerald-950/70 border-emerald-500 text-emerald-300 shadow-md ring-1 ring-emerald-500/40"
+                    : "bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Public Shared App</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-400 mt-0.5 lowercase">ais-pre-*.run.app</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUseSharedDomain(false);
+                  setCustomOrigin("");
+                }}
+                className={`py-2 px-3 rounded-xl text-[11px] font-grotesk font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center text-center cursor-pointer border ${
+                  !useSharedDomain && !customOrigin
+                    ? "bg-amber-950/70 border-amber-500 text-amber-300 shadow-md ring-1 ring-amber-500/40"
+                    : "bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Dev Sandbox</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-400 mt-0.5 lowercase">ais-dev-*.run.app</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dedicated Guide: Why Google Throws "You don't have access" & How to Fix */}
+        <div className="mt-3 bg-gradient-to-r from-red-950/40 via-zinc-900/90 to-amber-950/30 border border-amber-500/40 rounded-2xl p-3.5 text-xs space-y-2">
+          <div className="flex items-center gap-2 text-amber-300 font-bold uppercase tracking-wider text-[11px]">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Why does Google show "You don't have access" on your phone?</span>
+          </div>
+          <p className="text-zinc-300 text-[11px] leading-relaxed">
+            Google AI Studio development containers (<code className="bg-black/60 px-1 py-0.5 rounded text-[10px] text-amber-300 font-mono">ais-dev-...</code>) are private and require your developer Google login. When an unauthenticated phone browser scans the link, Google Cloud blocks it.
+          </p>
+          <div className="space-y-1.5 text-[11px] text-zinc-200 pt-1.5 border-t border-zinc-800/80">
+            <div className="flex items-start gap-1.5">
+              <span className="text-emerald-400 font-black">1.</span>
+              <span><strong>Make Public:</strong> In the AI Studio top bar, click <strong>Share</strong> to publish your app. Once shared, anyone scanning the <strong>Public Shared App</strong> QR above can play without logging in!</span>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="text-amber-400 font-black">2.</span>
+              <span><strong>Or Sign in on Phone:</strong> In Safari or Chrome on your phone, sign in to your developer Google account.</span>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="text-sky-400 font-black">3.</span>
+              <span><strong>Play on this PC Right Now:</strong> Click <strong>"Test Controller on PC"</strong> or <strong>"Open Controller in New Window"</strong> below — works immediately without needing a phone!</span>
+            </div>
+          </div>
+        </div>
+
         {/* Tab Switcher: QR Code vs Text Code */}
-        <div className="grid grid-cols-2 gap-2 mt-4 p-1.5 bg-zinc-900/90 rounded-2xl border border-zinc-800">
+        <div className="grid grid-cols-2 gap-2 mt-3.5 p-1.5 bg-zinc-900/90 rounded-2xl border border-zinc-800">
           <button
             onClick={() => setActiveTab("qr")}
             className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-grotesk font-black uppercase tracking-wider transition-all cursor-pointer ${
@@ -348,13 +449,22 @@ export const ConnectPhoneModal: React.FC<ConnectPhoneModalProps> = ({
           <button
             onClick={() => {
               if (typeof window !== "undefined") {
-                window.open(controllerUrl, "_blank");
+                // Open clean smartphone-sized window
+                const width = 420;
+                const height = 820;
+                const left = window.screen.width ? window.screen.width - width - 40 : 100;
+                const top = 60;
+                window.open(
+                  controllerUrl,
+                  `NESController_${roomId}`,
+                  `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+                );
               }
             }}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl border border-zinc-750 text-xs font-grotesk font-black uppercase tracking-wider transition-colors cursor-pointer"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded-xl border border-zinc-750 text-xs font-grotesk font-black uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
-            <span>OPEN CONTROLLER IN NEW TAB</span>
+            <ExternalLink className="w-4 h-4 text-sky-400" />
+            <span>OPEN CONTROLLER IN PHONE WINDOW</span>
           </button>
 
           <button
@@ -365,7 +475,7 @@ export const ConnectPhoneModal: React.FC<ConnectPhoneModalProps> = ({
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-95 text-white rounded-xl text-xs font-display font-black uppercase tracking-wider shadow-xl transition-all cursor-pointer border border-red-400/60"
           >
             <Gamepad2 className="w-4 h-4" />
-            <span>TEST CONTROLLER ON PC</span>
+            <span>TEST CONTROLLER ON PC (DUAL-SCREEN)</span>
           </button>
         </div>
 
